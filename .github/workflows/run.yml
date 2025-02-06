@@ -12,19 +12,36 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Convert deb to IPA
-        run: |
-          curl -L -o ${{ github.workspace }}/app.deb "${{ github.event.inputs.deb }}"
-          dpkg-deb -X ${{ github.workspace }}/app.deb ${{ github.workspace }}/app
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y dpkg zip
 
-          mkdir -p ${{ github.workspace }}/ipa/Payload
-          cp -R ${{ github.workspace }}/app/Applications/* ${{ github.workspace }}/ipa/Payload
-          
-          cd ${{ github.workspace }}/ipa
-          zip -r ${{ github.workspace }}/App.ipa .
+      - name: Download and extract DEB
+        run: |
+          curl -L -o app.deb "${{ github.event.inputs.deb }}"
+          mkdir -p extracted
+          dpkg-deb -X app.deb extracted
+          dpkg-deb -e app.deb extracted/DEBIAN
+
+      - name: Prepare IPA structure
+        run: |
+          mkdir -p ipa/Payload
+          APP_PATH=$(find extracted -name "*.app" | head -n 1)
+
+          if [ -z "$APP_PATH" ]; then
+            echo "No .app directory found in extracted DEB."
+            exit 1
+          fi
+
+          mv "$APP_PATH" ipa/Payload/
+
+      - name: Create IPA file
+        run: |
+          cd ipa
+          zip -r App.ipa Payload
+          mv App.ipa ../
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: App
-          path: ${{ github.workspace }}/App.ipa
+          path: App.ipa
